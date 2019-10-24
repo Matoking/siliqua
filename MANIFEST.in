@@ -1,0 +1,12 @@
+include MANIFEST.in LICENSE versioneer.py *.md
+include src/siliqua/_version.py
+
+graft src/siliqua
+
+exclude tox.ini requirements_dev.txt *.yml
+
+prune docs
+prune tests
+
+global-exclude *.py[cod]
+global-exclude __pycache__
