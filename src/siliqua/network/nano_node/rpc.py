@@ -63,7 +63,12 @@ class RPCProcessor(NetworkProcessorBase):
                     SILIQUA_VERSION
                 )
             },
-            timeout=aiohttp.ClientTimeout(total=self.NETWORK_TIMEOUT_SECONDS)
+            timeout=aiohttp.ClientTimeout(
+                total=self.NETWORK_TIMEOUT_SECONDS,
+                connect=0.5,
+                sock_connect=0.5,
+                sock_read=0.5
+            ),
         )
 
         logger.info("Starting RPC update loop")

@@ -16,7 +16,7 @@ import versioneer
 
 # Package meta-data.
 NAME = 'siliqua'
-DESCRIPTION = 'A feature-filled NANO wallet'
+DESCRIPTION = 'Modular light wallet for the NANO cryptocurrency'
 URL = 'https://github.com/Matoking/siliqua'
 EMAIL = 'jannepulk@gmail.com'
 AUTHOR = 'Janne Pulkkinen'
@@ -24,8 +24,8 @@ REQUIRES_PYTHON = '>=3.6.0'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    'nanolib>=0.3', 'msgpack>=0.6', 'cryptography>=2.6', 'appdirs>=1.4',
-    'click>=7.0', 'toml>=0.10', 'aiohttp>=3.5', 'filelock>=3.0', 'ijson>=2.3',
+    'nanolib>=0.4', 'msgpack>=0.6', 'cryptography>=2.6', 'appdirs>=1.4',
+    'click>=7.0', 'toml>=0.10', 'aiohttp>=3.5', 'filelock>=3.0', 'ijson>=2.5',
     'python-rapidjson>=0.8'
 ]
 

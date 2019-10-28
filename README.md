@@ -19,6 +19,7 @@ Features
 * Transaction timestamps and descriptions
 * Portable wallet files for easy backups with timestamps and details intact
 * NANO node and NanoVault server support
+* JSON output for easy integration with scripts
 
 Installation
 ============
@@ -41,6 +42,12 @@ virtualenv is recommended instead of a system-wide installation. For example, to
 python3 -mvenv venv
 source venv/bin/activate
 pip install siliqua
+```
+
+To deactivate the virtualenv, run:
+
+```
+deactivate
 ```
 
 After installation, you can read the [Getting Started](https://siliqua.readthedocs.io/en/user/getting_started.html) section of the documentation.

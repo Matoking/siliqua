@@ -119,11 +119,11 @@ def fast_network_recovery(monkeypatch):
     monkeypatch.setattr(
         "siliqua.network.nano_node.base.NetworkProcessorBase."
         "NETWORK_ERROR_WAIT_SECONDS",
-        0.1
+        0.5
     )
     monkeypatch.setattr(
         "siliqua.network.nano_node.base.NetworkProcessorBase."
-        "NETWORK_TIMEOUT_SECONDS", 0.1
+        "NETWORK_TIMEOUT_SECONDS", 0.5
     )
 
 

@@ -10,6 +10,9 @@ import time
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from itertools import cycle
+from multiprocessing import Event as ProcessEvent
+from multiprocessing import Manager, Process
+from multiprocessing import RLock as ProcessRLock
 from socketserver import ThreadingMixIn
 from threading import Event as ThreadEvent
 from threading import RLock, Thread, current_thread
@@ -26,6 +29,30 @@ from tests.util import (HTTPReplay, PartialMatch, async_hook, find_free_port,
                         hook, to_hex)
 
 TEST_DIFFICULTY = to_hex(9459044173002835, 16)
+
+
+def wallet_from_str(s):
+    """
+    Convenience function to load a Wallet instance from a JSON-encoded string.
+    This is more performant for transferring the wallet to the mocked
+    HTTP server.
+    """
+    if s is None:
+        return None
+
+    return Wallet.from_dict(json.loads(s))
+
+
+def wallet_to_str(wallet):
+    """
+    Convenience function to convert a Wallet instance to a JSON-encoded string.
+    This is more performant for transferring the wallet to the mocked
+    HTTP server.
+    """
+    if wallet is None:
+        return None
+
+    return json.dumps(wallet.to_dict(wallet))
 
 
 class PartialMatch:
@@ -88,7 +115,7 @@ class MockWebSocketNode:
         self.shutdown_flag = None
         self.lock = RLock()
 
-        self.broadcast_blocks = mock_node.broadcast_blocks
+        self.broadcast_blocks = mock_node.shared.broadcast_blocks
         self.subscriptions = {}
 
         self.ws_responses = defaultdict(list)
@@ -96,7 +123,7 @@ class MockWebSocketNode:
         self.work_difficulty = TEST_DIFFICULTY
 
     wallet = property(
-        lambda self: self.mock_node.wallet
+        lambda self: self.mock_node.shared.wallet
     )
 
     def start(self):
@@ -169,6 +196,8 @@ class MockWebSocketNode:
                     self.ws_responses[topic].remove(response)
 
     async def broadcast_mock_responses(self, ws):
+        wallet = wallet_from_str(self.wallet)
+
         if "confirmation" in self.subscriptions:
             options = self.subscriptions["confirmation"].get("options", {})
 
@@ -176,7 +205,7 @@ class MockWebSocketNode:
 
             for account_id in accounts:
                 try:
-                    account = self.wallet.account_map[account_id]
+                    account = wallet.account_map[account_id]
                 except KeyError:
                     continue
 
@@ -289,116 +318,25 @@ def run_test_ws_node(shutdown_flag, ws_mock_node):
     )
 
 
-class MockWebSocketNode:
-    def __init__(self, port, mock_node):
-        self.port = port
-        self.mock_node = mock_node
-
-        self.thread = None
-        self.shutdown_flag = None
-        self.lock = RLock()
-
-        self.broadcast_blocks = mock_node.broadcast_blocks
-        self.subscriptions = {}
-
-        self.ws_responses = defaultdict(list)
-
-        self.work_difficulty = TEST_DIFFICULTY
-
-    wallet = property(
-        lambda self: self.mock_node.wallet
-    )
-
-    def start(self):
-        self.shutdown_flag = ThreadEvent()
-
-        self.thread = Thread(
-            target=run_test_ws_node,
-            kwargs={
-                "shutdown_flag": self.shutdown_flag,
-                "ws_mock_node": self
-            }
-        )
-        self.thread.start()
-
-        # Wait for a bit to let the thread start up
-        time.sleep(0.05)
-
-    def stop(self):
-        if self.shutdown_flag:
-            self.shutdown_flag.set()
-            self.thread.join()
-
-            self.shutdown_flag = None
-            self.thread = None
-
-        return self
-
-    def reload(self):
-        self.stop()
-        self.start()
-
-        return self
-
-    def add_replay_datasets(self, datasets):
-        for dataset_name in datasets:
-            req_responses = load_ws_replay_dataset(dataset_name)
-
-            for response in req_responses:
-                self.ws_responses[response.topic].append(response)
-
-        return self
-
-    async def handle_subscription(self, response):
-        action = response["action"]
-        topic = response["topic"]
-
-        if action == "subscribe":
-            self.subscriptions[topic] = response.get("options", {})
-            logger.info(
-                "[MOCK] Subscribed %s %s", topic, self.subscriptions[topic]
-            )
-        elif action == "unsubscribe":
-            try:
-                del self.subscriptions[topic]
-                logger.info(
-                    "[MOCK] Unsubscribed from topic '%s'",
-                    topic
-                )
-            except KeyError:
-                logger.info(
-                    "[MOCK] Tried to unsubscribe from topic '%s' "
-                    "which is not active", topic
-                )
-
-    async def broadcast_replay_responses(self, ws):
-        for topic, options in self.subscriptions.items():
-            for response in self.ws_responses[topic]:
-                if response.options == options:
-                    await ws.send_json(response.response)
-                    self.ws_responses[topic].remove(response)
-
-
-
 class TestRPCNodeHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         result = None
 
-        mock_node = self.server.mock_node
+        shared = self.server.shared
 
         content_length = int(self.headers["Content-Length"])
         post_data = self.rfile.read(content_length)
         post_data = json.loads(post_data)
 
-        with mock_node.lock:
-            for mock_response in mock_node.req_responses:
+        with self.server.lock:
+            for mock_response in shared.req_responses:
                 if mock_response.match(post_data):
                     # If the request parameters correspond, send the
                     # prepared mock response
                     result = mock_response.get()
 
-            if not result and mock_node.wallet:
-                result = mock_node.create_mock_response(post_data)
+            if not result and shared.wallet:
+                result = self.server.mocker.create_mock_response(post_data)
 
         if not result:
             logger.info(
@@ -417,10 +355,12 @@ class TestRPCNodeHandler(BaseHTTPRequestHandler):
         return
 
 
-def run_test_rpc_node(shutdown_flag, mock_node):
+def run_test_rpc_node(shutdown_flag, lock, port, shared):
     test_server = ThreadingHTTPServer(
-        ("localhost", mock_node.port), TestRPCNodeHandler)
-    test_server.mock_node = mock_node
+        ("localhost", port), TestRPCNodeHandler)
+    test_server.shared = shared
+    test_server.mocker = MockRPCResponseMocker(shared=shared)
+    test_server.lock = lock
     test_server.timeout = 0.1
 
     while not shutdown_flag.is_set():
@@ -451,136 +391,14 @@ def create_responses_from_wallet(wallet, mock_node):
     return req_responses
 
 
-class MockRPCNode:
-    def __init__(self, port):
-        self.port = port
-        self.thread = None
-        self.shutdown_flag = None
-        self.lock = RLock()
-
-        self.wallet = None
-
-        self.req_responses = []
-        self.req_datasets = []
-
-        self.block_arrival_time = {}
-        self.broadcast_blocks = set()
-
-        self.work_difficulty = TEST_DIFFICULTY
-
-        self.last_broadcast_block_hash = None
-        self.broadcast_fail_counter = None
-        self.difficulty_raise_counter = None
-        self.broadcast_delay = 0.0
-
-        self.pocketable_blocks = []
-
-    def add_pocketable_blocks(self, blocks):
-        self.pocketable_blocks += blocks
-
-    def fail_broadcast_after(self, block_count=0):
-        """
-        Cause block broadcasts to fail after a certain amount of blocks
-        have been confirmed by the mocked node
-        """
-        self.broadcast_fail_counter = block_count
-
-    def raise_difficulty_after(self, block_count=0):
-        """
-        Cause block broadcasts to fail due to a difficulty increase
-        after a certain amount of blocks have been confirmed by the mocked
-        node
-        """
-        self.difficulty_raise_counter = block_count
-
-    def delay_confirmation(self, seconds):
-        """
-        Delay blocks from appearing in the mock node's history with
-        the given delay.
-
-        This is done to allow the WebSocket node to report of the block's
-        existence first
-        """
-        self.broadcast_delay = 0.0
-
-    def update_wallet(self):
-        """
-        Create mock requests allowing the accounts in the wallet
-        to be synchronized
-        """
-        if not self.wallet:
-            return
-
-        self.req_responses += create_responses_from_wallet(
-            wallet=self.wallet,
-            mock_node=self)
-
-        return self
-
-    def synchronize_responses(self):
-        with self.lock:
-            self.clear() \
-                .update_wallet()
-
-    def confirm_block(self, block):
-        if not self.wallet:
-            return None
-
-        block_hash = block.block_hash
-
-        self.wallet.account_map[block.account] \
-                   .block_map[block_hash].confirmed = True
-
-        self.synchronize_responses()
-
-    def add_replay_datasets(self, datasets):
-        for dataset_name in datasets:
-            self.req_responses += load_http_replay_dataset(dataset_name)
-
-        return self
-
-    def start(self):
-        self.shutdown_flag = ThreadEvent()
-
-        self.thread = Thread(
-            target=run_test_rpc_node,
-            kwargs={
-                "shutdown_flag": self.shutdown_flag,
-                "mock_node": self
-            }
-        )
-        self.thread.start()
-
-        # Wait for a bit to let the thread start up
-        time.sleep(0.05)
-
-    def stop(self):
-        if self.shutdown_flag:
-            self.shutdown_flag.set()
-            self.thread.join()
-
-            self.shutdown_flag = None
-            self.thread = None
-
-        return self
-
-    def clear(self):
-        self.req_responses.clear()
-
-        return self
-
-    def reload(self):
-        self.stop()
-        self.start()
-
-        return self
-
-    def add_request(self, req_resp):
-        self.req_responses.append(req_resp)
-        return self
+class MockRPCResponseMocker:
+    def __init__(self, shared):
+        self.shared = shared
 
     def create_mock_account_history(self, data):
         account_id = data["account"]
+
+        wallet = wallet_from_str(self.shared.wallet)
 
         assert data["raw"]
         assert data["reverse"]
@@ -593,7 +411,7 @@ class MockRPCNode:
         }
 
         try:
-            account = self.wallet.account_map[account_id]
+            account = wallet.account_map[account_id]
         except KeyError:
             logger.info(
                 "[MOCK] Account {} not in mock wallet".format(account_id)
@@ -614,16 +432,16 @@ class MockRPCNode:
                 found_head = True
 
             if found_head and block.confirmed:
-                arrival_time = self.block_arrival_time.get(block.block_hash, 0)
-                broadcast_complete = block_hash in self.broadcast_blocks
+                arrival_time = self.shared.block_arrival_time.get(block.block_hash, 0)
+                broadcast_complete = block_hash in self.shared.broadcast_blocks
 
                 # Don't report the block just yet if it's delayed,
                 # unless it's been broadcast by WebSocket
                 if not broadcast_complete and \
-                        time.time() < arrival_time + self.broadcast_delay:
+                        time.time() < arrival_time + self.shared.broadcast_delay:
                     continue
 
-                self.broadcast_blocks.add(block_hash)
+                self.shared.broadcast_blocks.add(block_hash)
 
                 if block.link_block:
                     subtype = "receive"
@@ -657,16 +475,18 @@ class MockRPCNode:
     def create_mock_blocks_info(self, data):
         blocks = {}
 
+        wallet = wallet_from_str(self.shared.wallet)
+
         for block_hash in data["hashes"]:
             found_block = None
-            for account in self.wallet.accounts:
+            for account in wallet.accounts:
                 if block_hash in account.block_map:
                     block = account.block_map[block_hash]
 
                     found_block = block
                     break
 
-            for block in self.pocketable_blocks:
+            for block in self.shared.pocketable_blocks:
                 if block.block_hash != block_hash:
                     continue
 
@@ -677,7 +497,7 @@ class MockRPCNode:
                 )
 
                 try:
-                    account = self.wallet.account_map[destination]
+                    account = wallet.account_map[destination]
                 except KeyError:
                     logger.info(
                         "[MOCK] Account {} not in the mock wallet".format(
@@ -707,6 +527,8 @@ class MockRPCNode:
     def create_mock_accounts_pending(self, data):
         accounts = data["accounts"]
 
+        wallet = wallet_from_str(self.shared.wallet)
+
         assert data["threshold"] == "100000000000000000000000000"
         assert data["source"]
 
@@ -715,7 +537,7 @@ class MockRPCNode:
         for account_id in accounts:
             blocks[account_id] = ""
 
-            for block in self.pocketable_blocks:
+            for block in self.shared.pocketable_blocks:
                 destination = (
                     block.destination
                     if block.block_type == "send"
@@ -726,7 +548,7 @@ class MockRPCNode:
                     continue
 
                 try:
-                    account = self.wallet.account_map[destination]
+                    account = wallet.account_map[destination]
                 except KeyError:
                     logger.info(
                         "[MOCK] Account {} to check pending blocks for "
@@ -765,6 +587,7 @@ class MockRPCNode:
 
     def create_mock_process(self, data):
         block_data = data["block"]
+        wallet = wallet_from_str(self.shared.wallet)
 
         block = RawBlock.from_json(block_data)
 
@@ -784,7 +607,7 @@ class MockRPCNode:
             )
             return None
 
-        account = self.wallet.account_map[block.account]
+        account = wallet.account_map[block.account]
         mock_block = account.block_map[block.block_hash]
 
         if mock_block.confirmed:
@@ -799,30 +622,31 @@ class MockRPCNode:
             "[MOCK] Confirming block {}".format(block.block_hash)
         )
 
-        if self.broadcast_fail_counter is not None:
-            if self.broadcast_fail_counter == 0:
+        if self.shared.broadcast_fail_counter is not None:
+            if self.shared.broadcast_fail_counter == 0:
                 return {
                     "error": "Gap source block"
                 }
             else:
-                self.broadcast_fail_counter -= 1
+                self.shared.broadcast_fail_counter -= 1
 
-        if self.difficulty_raise_counter is not None:
-            if self.difficulty_raise_counter == 0:
-                self.difficulty_raise_counter = None
+        if self.shared.difficulty_raise_counter is not None:
+            if self.shared.difficulty_raise_counter == 0:
+                self.shared.difficulty_raise_counter = None
 
-                self.work_difficulty = derive_work_difficulty(
-                    multiplier=1.15, base_difficulty=self.work_difficulty
+                self.shared.work_difficulty = derive_work_difficulty(
+                    multiplier=1.15, base_difficulty=self.shared.work_difficulty
                 )
                 return {
                     "error": "Block work is less than threshold"
                 }
             else:
-                self.difficulty_raise_counter -= 1
+                self.shared.difficulty_raise_counter -= 1
 
         mock_block.confirmed = True
 
-        self.block_arrival_time[block.block_hash] = time.time()
+        self.shared.block_arrival_time[block.block_hash] = time.time()
+        self.shared.wallet = wallet_to_str(wallet)
 
         return {
             "hash": block.block_hash
@@ -830,11 +654,11 @@ class MockRPCNode:
 
     def create_mock_active_difficulty(self, _):
         return {
-            "network_minimum": self.work_difficulty,
-            "network_current": self.work_difficulty,
+            "network_minimum": self.shared.work_difficulty,
+            "network_current": self.shared.work_difficulty,
             "multiplier": str(
                 derive_work_multiplier(
-                    difficulty=self.work_difficulty,
+                    difficulty=self.shared.work_difficulty,
                     base_difficulty=TEST_DIFFICULTY
                 )
             )
@@ -868,6 +692,133 @@ class MockRPCNode:
                 logger.info("[MOCK] Got non-mockable action '{}'".format(action))
         except Exception as exc:
             logger.info("[MOCK] Mock function failed with {}".format(str(exc)))
+
+
+class MockRPCNode:
+    def __init__(self, port):
+        self.port = port
+        self.process = None
+        self.shutdown_flag = None
+
+        self.manager = Manager()
+        self.lock = ProcessRLock()
+
+        self.shared = self.manager.Namespace()
+
+        self.shared.wallet = None
+
+        self.shared.req_responses = []
+        self.shared.req_datasets = []
+
+        self.shared.block_arrival_time = {}
+        self.shared.broadcast_blocks = set()
+
+        self.shared.work_difficulty = TEST_DIFFICULTY
+
+        self.shared.last_broadcast_block_hash = None
+        self.shared.broadcast_fail_counter = None
+        self.shared.difficulty_raise_counter = None
+        self.shared.broadcast_delay = 0.0
+
+        self.shared.pocketable_blocks = []
+
+    def add_pocketable_blocks(self, blocks):
+        self.shared.pocketable_blocks += blocks
+
+    def fail_broadcast_after(self, block_count=0):
+        """
+        Cause block broadcasts to fail after a certain amount of blocks
+        have been confirmed by the mocked node
+        """
+        self.shared.broadcast_fail_counter = block_count
+
+    def raise_difficulty_after(self, block_count=0):
+        """
+        Cause block broadcasts to fail due to a difficulty increase
+        after a certain amount of blocks have been confirmed by the mocked
+        node
+        """
+        self.shared.difficulty_raise_counter = block_count
+
+    def delay_confirmation(self, seconds):
+        """
+        Delay blocks from appearing in the mock node's history with
+        the given delay.
+
+        This is done to allow the WebSocket node to report of the block's
+        existence first
+        """
+        self.shared.broadcast_delay = 0.0
+
+    def update_wallet(self):
+        """
+        Create mock requests allowing the accounts in the wallet
+        to be synchronized
+        """
+        if not self.shared.wallet:
+            return
+
+        self.shared.req_responses += create_responses_from_wallet(
+            wallet=self.shared.wallet,
+            mock_node=self)
+
+        return self
+
+    def synchronize_responses(self):
+        with self.lock:
+            self.clear() \
+                .update_wallet()
+
+    def add_replay_datasets(self, datasets):
+        new_req_responses = []
+        for dataset_name in datasets:
+            new_req_responses += load_http_replay_dataset(dataset_name)
+
+        self.shared.req_responses += new_req_responses
+
+        return self
+
+    def start(self):
+        self.shutdown_flag = ProcessEvent()
+
+        self.process = Process(
+            target=run_test_rpc_node,
+            kwargs={
+                "shutdown_flag": self.shutdown_flag,
+                "lock": self.lock,
+                "port": self.port,
+                "shared": self.shared,
+            }
+        )
+        self.process.start()
+
+        # Wait for a bit to let the process start up
+        time.sleep(0.1)
+
+    def stop(self):
+        if self.shutdown_flag:
+            self.shutdown_flag.set()
+            self.process.join()
+
+            self.shutdown_flag = None
+            self.process = None
+
+        return self
+
+    def clear(self):
+        self.shared.req_responses.clear()
+
+        return self
+
+    def reload(self):
+        self.stop()
+        self.start()
+
+        return self
+
+    def add_request(self, req_resp):
+        self.shared.req_responses.append(req_resp)
+        return self
 
 
 @pytest.fixture(scope="function")
@@ -979,7 +930,7 @@ def hook_server_wallet_to_mock_node(mock_node):
                     wrapper._wrapped_method.__name__
                 )
             )
-            mock_node.wallet = Wallet.from_dict(server.wallet.to_dict())
+            mock_node.shared.wallet = wallet_to_str(server.wallet)
 
     return wrapper
 
@@ -993,7 +944,7 @@ def hook_wallet_to_mock_node(mock_node):
                     wrapper._wrapped_method.__name__
                 )
             )
-            mock_node.wallet = Wallet.from_dict(wallet.to_dict())
+            mock_node.shared.wallet = wallet_to_str(wallet)
 
     return wrapper
 
@@ -1002,7 +953,7 @@ def update_wallet_to_mock_node(mock_node):
     def wrapper(*args, **kwargs):
         wallet = args[0]
         with mock_node.lock:
-            mock_wallet = mock_node.wallet
+            mock_wallet = wallet_from_str(mock_node.shared.wallet)
 
             if not mock_wallet:
                 return
@@ -1046,6 +997,7 @@ def update_wallet_to_mock_node(mock_node):
                     account.precomputed_work
                 )
 
+            mock_node.shared.wallet = wallet_to_str(wallet)
             mock_node.synchronize_responses()
 
     return wrapper

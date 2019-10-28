@@ -126,7 +126,6 @@ async def mock_nanovault_ws_handler(request):
     raise web.GracefulExit()
 
 
-
 def run_test_nanovault_ws_node(shutdown_flag, ws_mock_node):
     app = web.Application()
 

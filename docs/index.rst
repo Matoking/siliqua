@@ -15,6 +15,8 @@ different features:
 - Supports NANO seeds
 - Transaction timestamps and descriptions
 - Portable wallet files allowing wallets to be backed up with timestamps and comments intact
+- NANO node and NanoVault server support
+- JSON output for easy integration with scripts
 
 ##########
 User guide

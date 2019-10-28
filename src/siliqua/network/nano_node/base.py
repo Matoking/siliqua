@@ -177,9 +177,10 @@ class NetworkProcessorBase:
                 message = str(exc.message)
             except AttributeError:
                 message = None
+            import traceback
             logger.error(
                 "HTTP POST to node %s, %s failed. Error %s",
-                self.rpc_url, str(params), message
+                self.rpc_url, str(params), traceback.format_exc()
             )
             raise exc
 

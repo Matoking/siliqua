@@ -73,7 +73,7 @@ precompute_multiplier = 1.25
     concurrent_requests = 100
 
     [network.nanovault]
-    # 'nanovault' uses puNanoVault.io-compatible servers and is
+    # 'nanovault' uses NanoVault.io-compatible servers and is
     # the easiest network plugin to set up.
     # See https://nanovault.io for details
     #
@@ -81,10 +81,10 @@ precompute_multiplier = 1.25
     # result in transactions getting delayed when the network is under
     # high activity
 
-    # rpc_url is REQUIRED
+    # rpc_url (aka API Server) is REQUIRED
     # rpc_url = ""
 
-    # ws_url is optional but recommended
+    # ws_url (aka Updates Server) is optional but recommended
     # ws_url = ""
 """[1:]  # Strip the first newline
 

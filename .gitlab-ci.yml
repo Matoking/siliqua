@@ -1,0 +1,15 @@
+image: debian:latest
+
+stages:
+  - test
+
+test:
+  stage: test
+  script:
+    - apt update
+    - apt install -y git python3.7 python3.7-dev python3-venv python3-wheel build-essential
+    - python3.7 -mvenv .env
+    - . .env/bin/activate
+    - pip install .
+    - pip install -r requirements_dev.txt
+    - pytest -vvs --cov=siliqua

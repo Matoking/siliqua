@@ -11,8 +11,6 @@ install:
   - pip install -r requirements_dev.txt
   - pip install codecov
 script:
-  - python setup.py build
-  - pytest --cov=siliqua --cov-report term --cov-report xml tests
-  - python setup.py speed
+  - pytest -vv --cov=siliqua --cov-report term --cov-report xml tests
 after_success:
   - codecov

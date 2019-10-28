@@ -100,7 +100,7 @@ class MultipleWaitResult:
 class WalletServer(object):
     """
     A server comprising a wallet, network provider and work provider
-    to provide a functional wallet
+    to provide a functioning wallet
     """
     def __init__(self, config, work, network, wallet):
         """
@@ -369,7 +369,7 @@ class WalletServer(object):
                         )
                     break
 
-                time.sleep(0.05)
+                time.sleep(0.2)
 
             return MultipleWaitResult(
                 wait_results=list(wait_results.values()),
