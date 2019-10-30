@@ -9,8 +9,8 @@ matrix:
 install:
   - pip install .
   - pip install -r requirements_dev.txt
-  - pip install codecov
+  - pip install coveralls
 script:
   - pytest -vv --cov=siliqua --cov-report term --cov-report xml tests
 after_success:
-  - codecov
+  - coveralls

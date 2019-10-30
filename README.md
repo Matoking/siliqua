@@ -2,7 +2,7 @@ siliqua
 =======
 
 [![image](https://img.shields.io/pypi/v/siliqua.svg)](https://pypi.org/project/siliqua/)
-[![codecov](https://codecov.io/gh/Matoking/siliqua/branch/master/graph/badge.svg)](https://codecov.io/gh/Matoking/siliqua)
+[![Coverage Status](https://coveralls.io/repos/github/Matoking/siliqua/badge.svg?branch=master)](https://coveralls.io/github/Matoking/siliqua?branch=master)
 [![Build Status](https://travis-ci.com/Matoking/siliqua.png?branch=master)](https://travis-ci.com/Matoking/siliqua)
 [![image](https://readthedocs.org/projects/siliqua/badge/?version=latest)](https://siliqua.readthedocs.io/en/latest/?badge=latest)
 
