@@ -1,4 +1,4 @@
-siliqua
+Siliqua
 =======
 
 [![image](https://img.shields.io/pypi/v/siliqua.svg)](https://pypi.org/project/siliqua/)
