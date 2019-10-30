@@ -50,7 +50,7 @@ To deactivate the virtualenv, run:
 deactivate
 ```
 
-After installation, you can read the [Getting Started](https://siliqua.readthedocs.io/en/user/getting_started.html) section of the documentation.
+After installation, you can read the [Getting Started](https://siliqua.readthedocs.io/en/latest/user/getting_started.html) section of the documentation.
 
 Documentation
 =============

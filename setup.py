@@ -125,6 +125,9 @@ setup(
     setup_requires=[
         "sphinx", "sphinx-tabs", "sphinxcontrib-apidoc"
     ],
+    extras_require={
+        "sphinx": ["sphinx-tabs", "sphinxcontrib-apidoc"]
+    },
     tests_require=["pytest"],
     include_package_data=True,
     license='CC0',
