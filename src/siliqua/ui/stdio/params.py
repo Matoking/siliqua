@@ -463,8 +463,8 @@ class IntRangeOption(BaseOption):
         if val is None:
             if self.default is not None:
                 return self.default
-            else:
-                raise ValueError("is required")
+
+            raise ValueError("is required")
 
         if not isinstance(val, int):
             raise ValueError("is not an integer")
@@ -488,6 +488,47 @@ class IntRangeOption(BaseOption):
 
         if self.default is not None:
             kwargs["default"] = self.default
+
+        return kwargs
+
+
+class IntRangeParam(BaseParam):
+    """
+    Integer range parameter. Only integers in the given inclusive range are
+    accepted.
+    """
+    def __init__(self, **kwargs):
+        super(IntRangeParam, self).__init__(**kwargs)
+
+        self.minimum = kwargs.get("minimum", None)
+        self.maximum = kwargs.get("maximum", None)
+
+        if not (self.minimum is not None and self.maximum is not None):
+            raise ValueError(
+                "Range requires both 'minimum' and 'maximum' to be defined")
+
+    def parse(self, val):
+        if val is None:
+            raise ValueError("is required")
+
+        if not isinstance(val, int):
+            raise ValueError("is not an integer")
+
+        if self.minimum is not None:
+            if val < self.minimum or val > self.maximum:
+                raise ValueError(
+                    "is not in range {}-{}".format(self.minimum, self.maximum)
+                )
+
+        return val
+
+    def get_click_kwargs(self):
+        minimum = self.minimum
+        maximum = self.maximum
+
+        kwargs = {
+            "type": click.IntRange(minimum, maximum) if minimum else int
+        }
 
         return kwargs
 

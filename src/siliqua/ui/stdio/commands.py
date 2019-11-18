@@ -2,15 +2,14 @@ import os.path
 import time
 from collections import OrderedDict, defaultdict
 
-from siliqua.server import MultipleWaitResult, WalletServer, WaitResult
+from nanolib import generate_seed, get_account_id, validate_seed
+from siliqua.server import MultipleWaitResult, WaitResult, WalletServer
 # Prevent collision with a command with the same name
 from siliqua.wallet import (Account, AccountSource, Block, LinkBlock, Wallet,
-                              WalletProperties, WalletSeedAlgorithm)
+                            WalletProperties, WalletSeedAlgorithm)
 from siliqua.wallet import \
     calculate_key_iteration_count as calculate_key_iteration_count_
-from siliqua.wallet.exceptions import (AccountAlreadyExists,
-                                         InsufficientBalance)
-from nanolib import generate_seed, get_account_id, validate_seed
+from siliqua.wallet.exceptions import AccountAlreadyExists, InsufficientBalance
 
 from . import logger
 from .exceptions import (AccountNotFound, BlockNotFound, BlockRejected,
@@ -19,9 +18,9 @@ from .exceptions import (AccountNotFound, BlockNotFound, BlockRejected,
                          SpendableAccountRequired, StdioError, WalletExists)
 from .params import (AccountOption, AccountParam, AmountParam, BlockHashParam,
                      BoolOption, BoolParam, FilePathParam, FloatOption,
-                     FloatParam, IntParam, IntRangeOption, PassphraseOption,
-                     PrivateKeyOption, PublicKeyOption, RepeatParams,
-                     SecureStrOption, StrOption, StrParam)
+                     FloatParam, IntParam, IntRangeOption, IntRangeParam,
+                     PassphraseOption, PrivateKeyOption, PublicKeyOption,
+                     RepeatParams, SecureStrOption, StrOption, StrParam)
 from .util import (StdioResult, cli_command, paginate_list,
                    truncate_ordered_dict, unlock_wallet)
 
@@ -222,6 +221,37 @@ def change_encryption(
             "key_iteration_count": server.wallet.encryption.key_iteration_count
         }
     )
+
+
+@cli_command(
+    short_help_text="Change gap limit on a wallet",
+    help_text=(
+        "Change gap limit on a wallet. New accounts are generated "
+        "when applicable."
+    ),
+    start_work=False, start_network=False)
+def change_gap_limit(
+        server,
+        passphrase: PassphraseOption,
+        gap_limit: IntRangeParam(minimum=0, maximum=10000)):
+    if not server.wallet.properties.seed:
+        raise SeedRequired
+
+    old_gap_limit = server.wallet.properties.gap_limit
+    server.wallet.properties.gap_limit = gap_limit
+
+    new_accounts = []
+
+    if gap_limit > old_gap_limit:
+        with unlock_wallet(server=server, passphrase=passphrase):
+            new_accounts = server.wallet.refill_accounts()
+
+    server.save_wallet()
+
+    return StdioResult({
+        "gap_limit": gap_limit,
+        "new_accounts": [account.account_id for account in new_accounts]
+    })
 
 
 @cli_command(
@@ -1031,11 +1061,28 @@ def remove_from_address_book(
 
 
 COMMANDS = [
-    create_wallet, calculate_key_iteration_count, change_encryption,
-    get_wallet_seed, get_balance, add_account, remove_account,
-    generate_account, sync, send, send_many, change_account_representative,
-    list_address_book, list_accounts, get_account_private_key, list_blocks,
-    get_block, set_account_name, clear_account_name,
-    set_block_description, clear_block_description, add_to_address_book,
+    create_wallet,
+    calculate_key_iteration_count,
+    change_encryption,
+    change_gap_limit,
+    get_wallet_seed,
+    get_balance,
+    add_account,
+    remove_account,
+    generate_account,
+    sync,
+    send,
+    send_many,
+    change_account_representative,
+    list_address_book,
+    list_accounts,
+    get_account_private_key,
+    list_blocks,
+    get_block,
+    set_account_name,
+    clear_account_name,
+    set_block_description,
+    clear_block_description,
+    add_to_address_book,
     remove_from_address_book
 ]

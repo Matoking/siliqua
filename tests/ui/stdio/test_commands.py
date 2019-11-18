@@ -188,6 +188,39 @@ class TestChangeEncryption:
 
 
 @pytest.mark.add_encrypted_test
+class TestChangeGapLimit:
+    def test_change_gap_limit(
+            self, stdio, wallet_path, wallet_factory, wallet_loader):
+        wallet = wallet_factory()
+        wallet.save(wallet_path)
+
+        # Increase the gap limit and ensure 5 new accounts are generated
+        result = stdio([
+            "--wallet", str(wallet_path), "change-gap-limit", "25"
+        ])
+
+        assert len(result["data"]["new_accounts"]) == 5
+        assert result["data"]["gap_limit"] == 25
+
+        wallet = wallet_loader(wallet_path)
+        assert wallet.accounts[24].account_id == \
+            result["data"]["new_accounts"][4]
+
+    def test_change_gap_limit_seed_required(
+            self, stdio, wallet_path, wallet_factory):
+        wallet = wallet_factory()
+        wallet.properties.seed = None
+        wallet.save(wallet_path)
+
+        # Gap limit can't be changed if there is no seed
+        result = stdio([
+            "--wallet", str(wallet_path), "change-gap-limit", "25"
+        ], success=False)
+
+        assert result["data"]["error"] == "seed_required"
+
+
+@pytest.mark.add_encrypted_test
 class TestGetWalletSeed:
     def test_get_wallet_seed(
             self, stdio, wallet_path, wallet_factory, wallet_loader,

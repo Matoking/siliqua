@@ -258,6 +258,45 @@ Results
             "status": "success"
          }
 
+change-gap-limit
+^^^^^^^^^^^^^^^^
+
+Change the wallet's gap limit.
+
+New accounts will be generated if necessary to fill the gap.
+
+Parameters
+""""""""""
+
+- ``gap_limit`` (positional) = new gap limit
+
+Results
+"""""""
+
+.. tabs::
+
+   .. group-tab:: Increase gap limit from 20 to 25
+
+      .. code-block:: console
+
+         $ siliqua --wallet <WALLET PATH> change-gap-limit 25
+
+      .. code-block:: json
+
+         {
+             "data": {
+                 "gap_limit": 25,
+                 "new_accounts": [
+                     "xrb_1trrz5xwgqnixfm8yscbbyjejm8rbuyy7bjrmhozbbpr7jrku9aptqing4t1",
+                     "xrb_3yjy4bjaibext7mmuybwxao46suchgs4gufccboxhhc5ne4jzufees3wwch6",
+                     "xrb_3a8i79r7kbwzkufitjhh7bgox6udd5gqrghipw4qox1u7s8r3fxz3hq6ndxz",
+                     "xrb_1g9r615arrc3krd98eoh5rrrmo7xdcz31myqy9n5bqbgr7nq763qrxa7g7zk",
+                     "xrb_38pchni9t53zaopix3p8uxofamb5on3bn9fnbdxtfbsdo8gu35ruphch4whc"
+                 ]
+             },
+             "status": "success"
+         }
+
 clear-block-description
 ^^^^^^^^^^^^^^^^^^^^^^^
 

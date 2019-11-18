@@ -499,6 +499,7 @@ class Wallet(WalletSerializable):
         that a correct amount of free accounts exist
 
         :raises ValueError: If the wallet doesn't have a seed
+        :returns: Generated accounts as a list, if any
         """
         if not self.properties.seed and not self.properties.seed_algorithm:
             return
@@ -512,12 +513,16 @@ class Wallet(WalletSerializable):
             self.properties.gap_limit - free_seed_account_count
         )
 
+        new_accounts = []
+
         if accounts_to_generate > 0:
             logger.info(
                 "Generating %s more accounts from seed.",
                 accounts_to_generate)
             for _ in range(0, accounts_to_generate):
-                self.generate_seed_account()
+                new_accounts.append(self.generate_seed_account())
+
+        return new_accounts
 
     @ensure_secrets_unlocked
     def generate_seed_account(self):

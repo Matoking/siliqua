@@ -42,7 +42,11 @@ def pytest_generate_tests(metafunc):
     idlist = []
     argvalues = []
 
-    fixture_names = metafunc.fixturenames
+    fixture_names = [
+        fixturename for fixturename in metafunc.fixturenames
+        # Exclude 'request' since it can't be passed to pytest.mark.parametrize
+        if fixturename != "request"
+    ]
     default_fixture_names = [
         name for name in fixture_names if name != "is_encrypted_test"
     ]
